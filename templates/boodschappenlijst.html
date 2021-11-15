@@ -1,0 +1,163 @@
+<!--suppress HtmlFormInputWithoutLabel -->
+<html lang="nl">
+<head>
+    <title> Boodschappenlijst. </title>
+    <!-- Added via script -->
+    <!--suppress CssUnusedSymbol -->
+    <style>
+        .error {
+            background-color: red;
+            border: 3px solid black;
+        }
+    </style>
+    <script>
+        let scanner_current_function = "{{ scanner_function }}" ;
+
+        function switch_scanner_function() {
+            if (scanner_current_function === "toevoegen") {
+                scanner_current_function = "weghalen";
+            } else {
+                scanner_current_function = "toevoegen";
+            }
+            const textDiv = document.getElementById("scannerfunctiontext");
+            textDiv.innerText = "Huidige functie: " + scanner_current_function;
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", "/scanner_function_switch/" + scanner_current_function, true);
+            xhr.send();
+        }
+        
+        function add_temp_product() {
+            let product = {};
+            let hadIssue = false;
+            const prodName = document.getElementById("product_naam")
+            if (prodName.value === "") {
+                prodName.classList.add("error");
+                hadIssue = true;
+            } else {
+                prodName.classList.remove("error");
+                product.naam = prodName.value;
+            }
+            
+            const prodShop = document.getElementById("product_winkel")
+            if (prodShop.value === "None") {
+                prodShop.classList.add("error");
+                hadIssue = true;
+            } else {
+                prodShop.classList.remove("error");
+                product.winkel = prodShop.value;
+            }
+            
+            const prodGewenst = document.getElementById("product_gewenst")
+            if (prodGewenst.value === "") {
+                prodGewenst.classList.add("error");
+                hadIssue = true;
+            } else {
+                prodGewenst.classList.remove("error");
+                product.gewenst = parseInt(prodGewenst.value);
+            }
+            
+            if (hadIssue)
+                return;
+            
+            const req = new XMLHttpRequest()
+            req.open("POST", "/toevoegen/temp", true) // true meaning async
+            req.setRequestHeader("Content-Type", "application/json")
+            
+            // Check if the product Winkel has changed, if not, don't move it to the new table as it'll be put in the wrong place.
+            req.onreadystatechange = function () {
+                if (req.readyState === 4 && req.status === 200) {
+                    // empty all elements
+                }
+            }
+
+            req.send(JSON.stringify({
+                naam: product.naam,
+                winkel: product.winkel,
+                gewenst: product.gewenst
+            }))
+        }
+    </script>
+</head>
+    <body>
+    <h1>Boodschappenlijst</h1>
+    <h2>Lidl</h2>
+    <ul>
+        {% for product in incorrect_counts_lidl %}
+            <li>{{ product.gewenst - product.count }} stuks {{ product.naam if product.naam != None else product.barcode }}. </li>            
+        {%endfor%}
+    </ul>
+    <h2>Plus</h2>
+    <ul>
+        {% for product in incorrect_counts_plus %}
+            <li>{{ product.gewenst - product.count }} stuks {{ product.naam if product.naam != None else product.barcode }}. </li>            
+        {%endfor%}
+    </ul>
+    <h2>Onbekende winkel</h2>
+    <ul>
+        {% for product in incorrect_counts_no_store %}
+            <li>{{ product.gewenst - product.count }} stuks {{ product.naam if product.naam != None else product.barcode }}. </li>            
+        {%endfor%}
+    </ul>
+    
+    <h2>Eenmalig product</h2>
+        <table style="margin-left: 2%; margin-top: 2%">
+            <colgroup>
+{#                    <th>Naam</th>#}
+                <col style="width: fit-content">
+{#                    <th>Winkel</th>#}
+                <col style="width: fit-content">
+{#                    <th>Gewenst aantal</th>#}
+                <col style="width: fit-content">
+{#                    <th>Opslaan</th>#}
+                <col style="width: fit-content">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>Naam</th>
+                    <th>Winkel</th>
+                    <th>Gewenst aantal</th>
+                    <th>Opslaan</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+{#                    <th>Naam</th>#}
+                    <td>
+                        <input id="product_naam" type="text" placeholder="Naam">
+                    </td>
+{#                    <th>Winkel</th>#}
+                    <td>
+                        <select id="product_winkel">
+                            <option value="None">Geen winkel</option>
+                            <option value="Stores.PLUS">Plus</option>
+                            <option value="Stores.LIDL">Lidl</option>
+                        </select>
+                    </td>
+{#                    <th>Gewenst aantal</th>#}
+                    <td>
+                        <input id="product_gewenst" type="number" min="0">
+                    </td>
+{#                    <th>Opslaan</th>#}
+                    <td><button onclick="add_temp_product()">Opslaan</button></td>
+                </tr>
+            </tbody>
+        </table>
+    
+    <h2>Scanner functie</h2>
+    <p>
+        <span id="scannerfunctiontext"> Huidige functie: {{ scanner_function }}</span>
+        <button onclick="switch_scanner_function()">Switch funtie</button>
+    </p>
+    
+    <h2>Ga naar:</h2>
+    <p>
+    <!--suppress HtmlUnknownTarget -->
+        <a href="/alle_producten"><button> Alle producten. </button> </a>
+    </p>
+    <p>
+    <!--suppress HtmlUnknownTarget -->
+    <a href="/boodschappenlijst"><button> boodschappenlijst. </button> </a>
+    </p>
+    </body>
+</html>
