@@ -114,13 +114,13 @@ def highest_sort_order_for_store(store: Stores, session: Session) -> int:
 
 
 def query_for_first_above(product: Product, session) -> Optional[Product]:
-    # SQLAlchemy limitations
-    # noinspection PyComparisonWithNone
+    # SQLAlchemy limitations + typing of element as column type not as Column
+    # noinspection PyComparisonWithNone,PyUnresolvedReferences
     return (
         session.query(Product)
         .filter_by(winkel=product.winkel)
         .filter(Product.sort_order < product.sort_order)
-        .order_by(Product.sort_order)
+        .order_by(Product.sort_order.desc())
         .first()
     )
 
