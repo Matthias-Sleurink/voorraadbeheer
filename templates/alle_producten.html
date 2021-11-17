@@ -142,6 +142,22 @@
     </script>
 </head>
     <body>
+    
+    <h2>Scanner functie</h2>
+    <p>
+        <span id="scannerfunctiontext"> Huidige functie: {{ scanner_function }}</span>
+        <button onclick="switch_scanner_function()">Switch funtie</button>
+    </p>
+    
+    <h2>Ga naar:</h2>
+    <p>
+    <!--suppress HtmlUnknownTarget -->
+        <a href="/alle_producten"><button> Alle producten. </button> </a>
+    </p>
+    <p>
+    <!--suppress HtmlUnknownTarget -->
+    <a href="/boodschappenlijst"><button> boodschappenlijst. </button> </a>
+    </p>
     <h1>Alle producten</h1>
 
     {% for (naam, productlist) in name_productlist %}
@@ -223,22 +239,6 @@
                 </tbody>
             </table>
     {% endfor %}
-    
-    
-    <h2>Scanner functie</h2>
-    <p>
-        <span id="scannerfunctiontext"> Huidige functie: {{ scanner_function }}</span>
-        <button onclick="switch_scanner_function()">Switch funtie</button>
-    </p>
-    
-    <h2>Ga naar:</h2>
-    <p>
-    <!--suppress HtmlUnknownTarget -->
-        <a href="/alle_producten"><button> Alle producten. </button> </a>
-    </p>
-    <p>
-    <!--suppress HtmlUnknownTarget -->
-    <a href="/boodschappenlijst"><button> boodschappenlijst. </button> </a>
-    </p>
+
     </body>
 </html>
