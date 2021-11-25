@@ -100,49 +100,12 @@
         {%endfor%}
     </ul>
     
-    <h2>Eenmalig product</h2>
-        <table style="margin-left: 2%; margin-top: 2%">
-            <colgroup>
-{#                    <th>Naam</th>#}
-                <col style="width: fit-content">
-{#                    <th>Winkel</th>#}
-                <col style="width: fit-content">
-{#                    <th>Gewenst aantal</th>#}
-                <col style="width: fit-content">
-{#                    <th>Opslaan</th>#}
-                <col style="width: fit-content">
-            </colgroup>
-            <thead>
-                <tr>
-                    <th>Naam</th>
-                    <th>Winkel</th>
-                    <th>Gewenst aantal</th>
-                    <th>Opslaan</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr>
-{#                    <th>Naam</th>#}
-                    <td>
-                        <input id="product_naam" type="text" placeholder="Naam">
-                    </td>
-{#                    <th>Winkel</th>#}
-                    <td>
-                        <select id="product_winkel">
-                            <option value="None">Geen winkel</option>
-                            <option value="Stores.PLUS">Plus</option>
-                            <option value="Stores.LIDL">Lidl</option>
-                        </select>
-                    </td>
-{#                    <th>Gewenst aantal</th>#}
-                    <td>
-                        <input id="product_gewenst" type="number" min="0">
-                    </td>
-{#                    <th>Opslaan</th>#}
-                    <td><button onclick="add_temp_product()">Opslaan</button></td>
-                </tr>
-            </tbody>
-        </table>
+    {% if email_text != "" %}
+        <h2>Email boodschappenlijst</h2>
+        <p>
+            <a href="{{ email_text }}"><button>Stuur email</button></a>
+        </p>
+    {% endif %} 
     
     <h2>Scanner functie</h2>
     <p>
@@ -158,6 +121,10 @@
     <p>
     <!--suppress HtmlUnknownTarget -->
     <a href="/boodschappenlijst"><button> boodschappenlijst. </button> </a>
+    </p>
+    <p>
+    <!--suppress HtmlUnknownTarget -->
+    <a href="/instellingen"><button> instellingen. </button> </a>
     </p>
     </body>
 </html>

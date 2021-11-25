@@ -1,8 +1,6 @@
 import enum
-import smtplib
+import urllib.parse
 from datetime import datetime
-from email.headerregistry import Address
-from email.message import EmailMessage
 from pathlib import Path
 from typing import Optional
 
@@ -16,7 +14,7 @@ Base = declarative_base()
 
 app = Flask(__name__)
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 
 def make_engine():
@@ -89,6 +87,12 @@ class Settings(Base):
     # defaults are defined in query_for_settings. As that is where the object is made on demand.
 
 
+class Email(Base):
+    __tablename__ = "email"
+    id: int = Column(Integer, primary_key=True)
+    address: str = Column(String(128), nullable=False)
+
+
 def query_for_settings(session: Session) -> Settings:
     settings: Optional[Settings] = session.query(Settings).first()
     if settings is None:
@@ -137,16 +141,14 @@ def query_for_first_below(product: Product, session) -> Optional[Product]:
     )
 
 
-def send_shopping_list(products: list[Product]):
-
-    msg = EmailMessage()
-    msg["Subject"] = f"Boodschappenlijst voor {datetime.today().strftime('%Y-%m-%d')}"
-    msg["From"] = Address("Voorraad", "'t huis", f"voorraadbeheer@huis.nl")
-    msg["To"] = f"matthias.sleurink@gmail.com"
-    text = "\n".join(str(prod) for prod in products)
-    msg.set_content(text)
-    with smtplib.SMTP("localhost") as s:
-        s.send_message(msg)
+def make_shopping_list(products: list[Product], header: str = "") -> str:
+    if len(products) < 1:
+        return ""
+    return header + "".join(
+        f" * {prod.gewenst - prod.count} stuks {prod.naam}.\n"
+        for prod in products
+        if prod.gewenst - prod.count > 0
+    )
 
 
 def create_database():
@@ -159,6 +161,10 @@ def create_database():
 def run_update_to_1(session: Session) -> Settings:
     Base.metadata.create_all(engine, tables=[Settings.__table__])
     return query_for_settings(session)  # create a default settings object
+
+
+def run_update_to_2(session: Session):
+    Base.metadata.create_all(engine, tables=[Email.__table__])
 
 
 @app.context_processor
@@ -232,13 +238,37 @@ def boodschappenlijst():
             )
             for winkel in [Stores.LIDL, Stores.PLUS, None]
         ]
+        email_text = ""
+        email_addresses: [Email] = session.query(Email).all()
 
+        if len(email_addresses) > 0:
+            email_text = f"mailto:{urllib.parse.quote(email_addresses[0].address)}?subject={urllib.parse.quote('Boodschappenlijst van ' + datetime.now().strftime('%Y-%m-%d'))}&body="
+
+            for incorrect_products, name in [
+                (incorrect_counts_lidl, "Lidl"),
+                (incorrect_counts_plus, "Plus"),
+                (incorrect_counts_no_store, "Geen winkel"),
+            ]:
+                email_text += urllib.parse.quote(
+                    make_shopping_list(
+                        incorrect_products,
+                        header=f"{name}: \n",
+                    )
+                )
+
+            if len(email_addresses) > 1:
+                email_text += "&cc="
+                for email in email_addresses[1:]:
+                    email_text += f"{urllib.parse.quote(email.address)},"
+                email_text = email_text[:-1]  # remove last ','
+        print(email_text)
         return render_template(
             "boodschappenlijst.html",
             incorrect_counts_lidl=incorrect_counts_lidl,
             incorrect_counts_plus=incorrect_counts_plus,
             incorrect_counts_no_store=incorrect_counts_no_store,
             scanner_function=query_for_settings(session).scanner_functie,
+            email_text=email_text,
         )
 
 
@@ -259,6 +289,16 @@ def alle_producten():
             "alle_producten.html",
             name_productlist=with_names,
             Stores=Stores,
+            scanner_function=query_for_settings(session).scanner_functie,
+        )
+
+
+@app.route("/instellingen", methods=["GET"])
+def instellingen():
+    with Session.begin() as session:
+        return render_template(
+            "instellingen.html",
+            emails=[e.address for e in session.query(Email).all()],
             scanner_function=query_for_settings(session).scanner_functie,
         )
 
@@ -338,6 +378,36 @@ def delete_product(barcode: str):
     return f"Product met barcode {barcode} is verwijderd."
 
 
+@app.route("/toevoegen_email", methods=["POST"])
+def add_email():
+    address = request.json.get("email")
+    if address is None:
+        return f"email address was None!"
+
+    with Session.begin() as session:
+        optEmail = session.query(Email).filter_by(address=address).first()
+        if optEmail is not None:
+            return f"Error: Email with address {address} already exists!"
+
+        session.add(Email(address=address))
+        return f"Added email with address {address}."
+
+
+@app.route("/verwijder_email", methods=["POST"])
+def remove_email():
+    address = request.json.get("email")
+    if address is None:
+        return f"email address was None!"
+
+    with Session.begin() as session:
+        optEmail = session.query(Email).filter_by(address=address).first()
+        if optEmail is None:
+            return f"Error: No email with address {address} found."
+
+        session.delete(optEmail)
+        return f"Deleted email with address {address}."
+
+
 @app.route("/")
 def hello_world():
     return redirect("/boodschappenlijst")
@@ -354,7 +424,7 @@ with Session.begin() as session:
         settings = run_update_to_1(session)
 
     if settings.version < 2:
-        # update to next version
+        run_update_to_2(session)
         settings.version = 2
 
 
