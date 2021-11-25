@@ -22,6 +22,22 @@
         }
     </style>
     <script>
+        let scanner_current_function = "{{ scanner_function }}" ;
+
+        function switch_scanner_function() {
+            if (scanner_current_function === "toevoegen") {
+                scanner_current_function = "weghalen";
+            } else {
+                scanner_current_function = "toevoegen";
+            }
+            const textDiv = document.getElementById("scannerfunctiontext");
+            textDiv.innerText = "Huidige functie: " + scanner_current_function;
+            
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", "/scanner_function_switch/" + scanner_current_function, true);
+            xhr.send();
+        }
+        
         function remove_email(address) {
             const tableRow = document.getElementById("email_" + address);
             const req = new XMLHttpRequest();

@@ -261,7 +261,7 @@ def boodschappenlijst():
                 for email in email_addresses[1:]:
                     email_text += f"{urllib.parse.quote(email.address)},"
                 email_text = email_text[:-1]  # remove last ','
-        print(email_text)
+
         return render_template(
             "boodschappenlijst.html",
             incorrect_counts_lidl=incorrect_counts_lidl,
