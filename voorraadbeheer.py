@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from flask import Flask, redirect, render_template, request
-from sqlalchemy import Column, Enum, Integer, String, create_engine
+from sqlalchemy import Column, Enum, Integer, String, create_engine, ForeignKey
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -14,7 +14,7 @@ Base = declarative_base()
 
 app = Flask(__name__)
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 
 def make_engine():
@@ -34,6 +34,9 @@ Session.configure(bind=engine)
         Server send to webpage to reload
         Derde winkel
 """
+
+# used to save the add/remove setting when adding a new barcode to a product
+vorige_scanner_function: Optional[str] = None
 
 
 def highest_sort_order():
@@ -69,6 +72,14 @@ class Product(Base):
         return f"<Product: {self.barcode=}, {self.naam=}, {self.winkel=}>"
 
 
+class AdditionalProductBarcode(Base):
+    __tablename__ = "additionalbarcodes"
+
+    barcode: str = Column(String(128), unique=True, nullable=False)
+    product_id: int = Column(Integer, ForeignKey("product.id"), nullable=False)
+    id: int = Column(Integer, primary_key=True)
+
+
 class TempProduct(Base):
     __tablename__ = "tempproduct"
 
@@ -102,7 +113,17 @@ def query_for_settings(session: Session) -> Settings:
 
 
 def query_for_barcode(barcode: str, session: Session) -> Optional[Product]:
-    return session.query(Product).filter_by(barcode=barcode).first()
+    in_normal_table = session.query(Product).filter_by(barcode=barcode).first()
+    if in_normal_table is not None:
+        return in_normal_table
+
+    in_additional_table:Optional[AdditionalProductBarcode] = session.query(AdditionalProductBarcode)\
+                                                                    .filter_by(barcode=barcode)\
+                                                                    .first()
+    if in_additional_table is None:
+        return None
+
+    return session.query(Product).filter_by(id=in_additional_table.product_id).first()
 
 
 def highest_sort_order_for_store(store: Stores, session: Session) -> int:
@@ -166,6 +187,8 @@ def run_update_to_1(session: Session) -> Settings:
 def run_update_to_2(session: Session):
     Base.metadata.create_all(engine, tables=[Email.__table__])
 
+def run_update_to_3(session: Session):
+    Base.metadata.create_all(engine, tables=[AdditionalProductBarcode.__table__])
 
 @app.context_processor
 def util_methods_definer():
@@ -348,11 +371,17 @@ def move_down(barcode: str):
 
 @app.route("/scanner_function_switch/<function>", methods=["GET"])
 def scanner_function_switch(function: str):
-    if function is None or function not in ["toevoegen", "weghalen"]:
+    if function is None:
+        return f"Unknown scanner function {function}"
+    if function not in ["toevoegen", "weghalen"] and not function.startswith("barcode_toevoegen"):
         return f"Unknown scanner function {function}"
 
     with Session.begin() as session:
-        query_for_settings(session).scanner_functie = function
+        settings = query_for_settings(session)
+
+        global vorige_scanner_function
+        vorige_scanner_function = settings.scanner_functie
+        settings.scanner_functie = function
 
     return f"Updated scanner function to be {function}"
 
@@ -360,13 +389,25 @@ def scanner_function_switch(function: str):
 @app.route("/scan/<barcode>", methods=["GET"])
 def scanner_scanned(barcode: str):
     with Session.begin() as session:
-        should_add = query_for_settings(session).scanner_functie == "toevoegen"
+        scanner_function = query_for_settings(session).scanner_functie
 
-    # TODO: add check if barcode is some special value to switch the scanner function here.
-    if should_add:
+    if scanner_function == "toevoegen":
         return add_product(barcode)
-    else:
+    elif scanner_function == "weghalen":
         return remove_product(barcode)
+
+    barcode_to_add_to = scanner_function.removeprefix("barcode_toevoegen+")
+
+    with Session.begin() as session:
+        to_add_to = query_for_barcode(barcode_to_add_to, session)
+        session.add(AdditionalProductBarcode(barcode=barcode, product_id=to_add_to.id))
+
+    with Session.begin() as session:
+        global vorige_scanner_function
+        settings = query_for_settings(session)
+        settings.scanner_functie = vorige_scanner_function
+
+    return f"Added barcode {barcode} to product with barcode {barcode_to_add_to}."
 
 
 @app.route("/verwijder/<barcode>", methods=["GET"])
@@ -407,6 +448,17 @@ def remove_email():
         session.delete(optEmail)
         return f"Deleted email with address {address}."
 
+@app.route("/barcode_toevoegen/<barcode>", methods=["GET"])
+def add_barcode(barcode: str):
+    global vorige_scanner_function
+
+    with Session.begin() as session:
+        settings: Settings = query_for_settings(session)
+        vorige_scanner_function = settings.scanner_functie
+        settings.scanner_functie = "barcode_toevoegen+" + barcode
+
+    return f"Next scanning action will add a barcode for this product."
+
 
 @app.route("/")
 def hello_world():
@@ -432,6 +484,10 @@ with Session.begin() as session:
     if settings.version < 2:
         run_update_to_2(session)
         settings.version = 2
+
+    if settings.version < 3:
+        run_update_to_3(session)
+        settings.version=3
 
 
 if __name__ == "__main__":
