@@ -307,6 +307,11 @@ def alle_producten():
             )
             for store in [Stores.LIDL, Stores.PLUS, None]
         ]
+
+        for products in per_store:
+            for product in products:
+                product.andere_barcodes = ", ".join(map(lambda x: x.barcode, session.query(AdditionalProductBarcode).filter_by(product_id=product.id).all()))
+
         with_names = zip(["Lidl", "Plus", "Onbekende winkel"], per_store)
         return render_template(
             "alle_producten.html",

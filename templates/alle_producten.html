@@ -139,6 +139,21 @@
             }
             req.send();
         }
+
+        // Sets up the backend to interpret the next barcode scanned as a new barcode for this product.
+        function add_barcode(barcode) {
+            const xhr = new XMLHttpRequest()
+            const textDiv = document.getElementById("scannerfunctiontext");
+
+            xhr.open("GET", "/barcode_toevoegen/" + barcode, true)
+            // We might add this back in if we can signal to the frontend that we are "finished" with this.
+            // For now this only adds confusing as it makes it look like you can add more than one additional barcode at a time. Which is not the case.
+            {#xhr.onreadystatechange = function () {#}
+            {#    if (xhr.readyState === 4 && xhr.status === 200)#}
+            {#        textDiv.innerText = "Huidige functie: barcode toevoegen aan product " + barcode;#}
+            {# }#}
+            xhr.send()
+        }
     </script>
 </head>
     <body>
@@ -170,7 +185,7 @@
             <colgroup>
 {#                    <th>Sorteer</th>#}
                 <col style="width: fit-content">
-{#                    <th>Barcode</th>#}
+{#                    <th>Barcodes</th>#}
                 <col style="width: fit-content">
 {#                    <th>Naam</th>#}
                 <col style="width: fit-content">
@@ -182,18 +197,21 @@
                 <col style="width: fit-content">
 {#                    <th>Opslaan</th>#}
                 <col style="width: fit-content">
+{#                    <th>Barcode Toevoegen</th>#}
+                <col style="width: fit-content">
 {#                    <th>Verwijderen</th>#}
                 <col style="width: fit-content">
             </colgroup>
             <thead>
                 <tr>
                     <th>Sorteer</th>
-                    <th>Barcode</th>
+                    <th>Barcodes</th>
                     <th>Naam</th>
                     <th>Winkel</th>
                     <th>Aantal</th>
                     <th>Gewenst aantal</th>
                     <th>Opslaan</th>
+                    <th>Barcode Toevoegen</th>
                     <th>Verwijderen</th>
                 </tr>
                 </thead>
@@ -202,8 +220,8 @@
                     <tr id="product_{{ product.barcode }}" >
 {#                    <th>Sorteer</th>#}
                         <td><button onclick="move_up('{{ product.barcode }}')">↑</button><button onclick="move_down('{{ product.barcode }}')">↓</button></td>
-{#                    <th>Barcode</th>#}
-                        <td>{{ product.barcode }}</td>
+{#                    <th>Barcodes</th>#}
+                        <td>{{ product.barcode }}{% if product.andere_barcodes %}, {% endif %} {{ product.andere_barcodes }}</td>
 {#                    <th>Naam</th>#}
                         <td>
                             <input class="product_naam" type="text" value="{{ str_of_or(product.naam, "") }}" placeholder="Naam">
@@ -236,6 +254,8 @@
                         </td>
 {#                    <th>Opslaan</th>#}
                         <td><button onclick="update_product('{{ product.barcode }}')">Opslaan</button></td>
+{#                    <th>Barcode Toevoegen</th>#}
+                        <td><button onclick="add_barcode('{{ product.barcode }}')">Barcode Toevoegen</button> </td>
 {#                    <th>Verwijderen</th>#}
                         <td><button onclick="delete_product('{{ product.barcode }}')">Verwijderen</button></td>
                     </tr>
