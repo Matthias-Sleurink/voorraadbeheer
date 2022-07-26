@@ -417,6 +417,12 @@ with Session.begin() as session:
 
     if engine == ":memory:":
         create_database()
+    else:
+        # New Dev machine does not trigger ":memory:" check, even though the database does not exist.
+        try:
+            session.query(Product).first()
+        except OperationalError as o:
+            create_database()
     try:
         settings = query_for_settings(session)
     except OperationalError:
