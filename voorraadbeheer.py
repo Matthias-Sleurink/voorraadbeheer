@@ -20,6 +20,7 @@ CURRENT_VERSION = 3
 def make_engine():
     return create_engine(
         "sqlite:///" + str(Path(".") / "voorraad.db")
+        # ,echo=True
     )  # TODO: echo for debug ,echo=True
 
 
@@ -402,23 +403,36 @@ def scanner_scanned(barcode: str):
         return remove_product(barcode)
 
     barcode_to_add_to = scanner_function.removeprefix("barcode_toevoegen+")
-
+    deleted = 0
+    # check if barcode already exists and remove
     with Session.begin() as session:
+        existing_barcodes = session.query(AdditionalProductBarcode).filter_by(barcode=barcode).all()
+        for existing in existing_barcodes:
+            session.delete(existing)
+            deleted += 1
+
+        # do this in the same session so that rollback will not bring us to an invalid state.
         to_add_to = query_for_barcode(barcode_to_add_to, session)
         session.add(AdditionalProductBarcode(barcode=barcode, product_id=to_add_to.id))
 
-    with Session.begin() as session:
+        # do this in the same session so that rollback will not bring us to an invalid state.
         global vorige_scanner_function
         settings = query_for_settings(session)
         settings.scanner_functie = vorige_scanner_function
 
-    return f"Added barcode {barcode} to product with barcode {barcode_to_add_to}."
+    return f"Added barcode {barcode} to product with barcode {barcode_to_add_to}." + ("" if deleted == 0 else f" Deleted {barcode} from {deleted} other products.")
 
 
 @app.route("/verwijder/<barcode>", methods=["GET"])
 def delete_product(barcode: str):
     with Session.begin() as session:
         product = query_for_barcode(barcode, session)
+
+        additionals = session.query(AdditionalProductBarcode).filter_by(product_id=product.id).all()
+        for additional_barcode in additionals:
+            session.delete(additional_barcode)
+
+
         if product is not None:
             session.delete(product)
     return f"Product met barcode {barcode} is verwijderd."
