@@ -21,7 +21,7 @@ CURRENT_VERSION = 3
 def make_engine():
     return create_engine(
         "sqlite:///" + str(Path(".") / "voorraad.db")
-        # ,echo=True
+        ,echo=True
     )  # TODO: echo for debug ,echo=True
 
 
@@ -205,7 +205,7 @@ def util_methods_definer():
 
     return util_methods
 
-@app.route("restart", methods=["GET"])
+@app.route("/restart", methods=["GET"])
 def restart():
     subprocess.run("sleep 10 ; sudo shutdown -r now", timeout=0.0)
     return "Restarting in 10 seconds..."
@@ -334,6 +334,7 @@ def instellingen():
             "instellingen.html",
             emails=[e.address for e in session.query(Email).all()],
             scanner_function=query_for_settings(session).scanner_functie,
+            version=subprocess.check_output(["git", "log", "--oneline", "-n1"]).decode("utf-8"),
         )
 
 
