@@ -1,5 +1,6 @@
 import requests
 import socket
+from datetime import datetime
 
 
 # thanks SO: https://stackoverflow.com/a/28950776
@@ -21,8 +22,14 @@ def main():
     ip = get_ip()
 
     while True:
+        try:
+            text = input()
+        except EOFError:
+            continue # scanner sometimes gives an EOF.
+
         # noinspection HttpUrlsUsage
-        print(requests.get(f"http://{ip}:5000/scan/{input()}").text)
+        result = requests.get(f"http://{ip}:5000/scan/{text}").text
+        print(datetime.now(), result)
 
 
 if __name__ == "__main__":
