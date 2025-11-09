@@ -1,4 +1,5 @@
 import enum
+import os
 import subprocess
 import urllib.parse
 from datetime import datetime
@@ -21,6 +22,7 @@ CURRENT_VERSION = 3
 def make_engine():
     return create_engine(
         "sqlite:///" + str(Path(".") / "voorraad.db")
+        ,echo=True
     )  # TODO: echo for debug ,echo=True
 
 
@@ -206,8 +208,9 @@ def util_methods_definer():
 
 @app.route("/restart", methods=["GET"])
 def restart():
-    subprocess.run("sleep 10 ; sudo shutdown -r now", timeout=0.0)
-    return "Restarting in 10 seconds..."
+    os.system("sudo shutdown -r now")
+
+    return "Restarting..."
 
 @app.route("/toevoegen/temp", methods=["POST"])
 def add_temp_product():
