@@ -1,4 +1,5 @@
 import enum
+import subprocess
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
@@ -204,6 +205,10 @@ def util_methods_definer():
 
     return util_methods
 
+@app.route("restart", methods=["GET"])
+def restart():
+    subprocess.run("sleep 10 ; sudo shutdown -r now", timeout=0.0)
+    return "Restarting in 10 seconds..."
 
 @app.route("/toevoegen/temp", methods=["POST"])
 def add_temp_product():

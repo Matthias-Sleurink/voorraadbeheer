@@ -8,9 +8,6 @@ pip install Flask sqlalchemy requests
 ```
 Zorg er dan voor dat je een Database Driver voor sqlite geïnstalleerd heb.
 
-## Client setup
-In het client.py bestand moet je de tekst 'localhost' vervangen met het IP van je server
-
 # Aanzetten
 De server word aangezet met de twee volgende commandos:
 
