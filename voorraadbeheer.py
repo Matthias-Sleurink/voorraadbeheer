@@ -21,7 +21,6 @@ CURRENT_VERSION = 3
 def make_engine():
     return create_engine(
         "sqlite:///" + str(Path(".") / "voorraad.db")
-        ,echo=True
     )  # TODO: echo for debug ,echo=True
 
 
