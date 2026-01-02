@@ -1,5 +1,4 @@
 import enum
-import logging
 import os
 import subprocess
 import typing
@@ -24,7 +23,7 @@ CURRENT_VERSION = 3
 def make_engine():
     return create_engine(
         "sqlite:///" + str(Path(".") / "voorraad.db")
-        ,echo=True
+        # ,echo=True
     )  # TODO: echo for debug ,echo=True
 
 
@@ -240,6 +239,7 @@ def util_methods_definer():
 
 @app.route("/restart", methods=["GET"])
 def restart():
+    app.logger.warning("Restarting voorraadbeheer now!")
     os.system("sudo shutdown -r now")
 
     return "Restarting..."
