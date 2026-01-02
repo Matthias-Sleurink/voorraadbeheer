@@ -1,12 +1,13 @@
 import enum
 import os
 import subprocess
+import typing
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from flask import Flask, redirect, render_template, request
+from flask import Flask, redirect, render_template, request, abort, jsonify
 from sqlalchemy import Column, Enum, Integer, String, create_engine, ForeignKey
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -59,6 +60,14 @@ class Stores(enum.Enum):
     LIDL = 1
     PLUS = 2
 
+    def as_json_str(self) -> str:
+        if self == Stores.LIDL:
+            return "LIDL"
+        elif self == Stores.PLUS:
+            return "PLUS"
+        else:
+            return "NONE"
+
 
 class Product(Base):
     __tablename__ = "product"
@@ -74,6 +83,21 @@ class Product(Base):
     def __repr__(self):
         return f"<Product: {self.barcode=}, {self.naam=}, {self.winkel=}>"
 
+    def as_json_dict(self, session: Session) -> dict[str, typing.Any]:
+        other_barcodes: typing.List[AdditionalProductBarcode] =\
+            session.query(AdditionalProductBarcode).filter_by(product_id=self.id).all()
+
+        return {
+            "barcode": self.barcode,
+            "naam": self.naam,
+            "winkel": self.winkel if self.winkel is None else self.winkel.as_json_str(),
+            "count": self.count,
+            "gewenst": self.gewenst,
+            "id": self.id,
+            "sort_order": self.sort_order,
+            "other_barcodes": [p.as_json_dict() for p in other_barcodes],
+        }
+
 
 class AdditionalProductBarcode(Base):
     __tablename__ = "additionalbarcodes"
@@ -81,6 +105,13 @@ class AdditionalProductBarcode(Base):
     barcode: str = Column(String(128), unique=True, nullable=False)
     product_id: int = Column(Integer, ForeignKey("product.id"), nullable=False)
     id: int = Column(Integer, primary_key=True)
+
+    def as_json_dict(self) -> dict[str, typing.Any]:
+        return {
+            "barcode": self.barcode,
+            "product_id": self.product_id,
+            "id": self.id,
+        }
 
 
 class TempProduct(Base):
@@ -485,6 +516,16 @@ def add_barcode(barcode: str):
         settings.scanner_functie = "barcode_toevoegen+" + barcode
 
     return f"Next scanning action will add a barcode for this product."
+
+
+@app.route("/v2/product/<barcode>", methods=["GET"])
+def v2_get_product(barcode: str):
+    with Session.begin() as session:
+        product: typing.Optional[Product] = query_for_barcode(barcode, session)
+        if product is None:
+            abort(404)
+
+        return jsonify(product.as_json_dict(session))
 
 
 @app.route("/")
