@@ -1,4 +1,5 @@
 import enum
+import logging
 import os
 import subprocess
 import typing
@@ -527,6 +528,30 @@ def v2_get_product(barcode: str):
 
         return jsonify(product.as_json_dict(session))
 
+# this is not ideal REST behaviour.
+@app.route("/v2/product/add/<barcode>", methods=["get"])
+def v2_add(barcode: str):
+    add_product(barcode)
+
+    with Session.begin() as session:
+        product: typing.Optional[Product] = query_for_barcode(barcode, session)
+        if product is None:
+            app.logger.warning(f"Product with barcode {barcode} was not found after product_add call!")
+            abort(404)
+
+        return jsonify(product.as_json_dict(session))
+
+@app.route("/v2/product/remove/<barcode>", methods=["get"])
+def v2_remove(barcode: str):
+    remove_product(barcode)
+
+    with Session.begin() as session:
+        product: typing.Optional[Product] = query_for_barcode(barcode, session)
+        if product is None:
+            app.logger.info(f"Product with barcode {barcode} was not found after product_remove call!")
+            abort(404)
+
+        return jsonify(product.as_json_dict(session))
 
 @app.route("/")
 def hello_world():
