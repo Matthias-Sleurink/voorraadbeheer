@@ -240,7 +240,7 @@ def util_methods_definer():
 @app.route("/restart", methods=["GET"])
 def restart():
     app.logger.warning("Restarting voorraadbeheer now!")
-    os.system("sudo shutdown -r now")
+    os.system("shutdown -r now")
 
     return "Restarting..."
 
