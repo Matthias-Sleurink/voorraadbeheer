@@ -581,7 +581,7 @@ def v2_new_product():
 
     with Session.begin() as session:
         prod = Product(barcode=barcode,
-                       name=name,
+                       naam=name,
                        count=have,
                        gewenst=want,
                        winkel=store,
