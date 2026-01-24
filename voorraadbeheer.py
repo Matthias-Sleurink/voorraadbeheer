@@ -12,7 +12,6 @@ from sqlalchemy import Column, Enum, Integer, String, create_engine, ForeignKey
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-
 Base = declarative_base()
 
 app = Flask(__name__)
@@ -552,6 +551,45 @@ def v2_remove(barcode: str):
             abort(404)
 
         return jsonify(product.as_json_dict(session))
+
+
+@app.route("/v2/product/new", methods=["post"])
+def v2_new_product():
+    json_text = request.json
+
+    try:
+        barcode = json_text["barcode"]
+        name = json_text["name"]
+        have = json_text["have"]
+        want = json_text["want"]
+        store = json_text["store"]
+
+    except KeyError as e:
+        return f"Faulty request! {e!r}"
+
+    try:
+        have = int(have)
+        want = int(want)
+        if store == "Lidl":
+            store = Stores.LIDL
+        elif store == "Plus":
+            store = Stores.PLUS
+        else:
+            raise ValueError(f"Store {store} not recognized.")
+    except ValueError as e:
+        return f"error: {e}"
+
+    with Session.begin() as session:
+        prod = Product(barcode=barcode,
+                       name=name,
+                       count=have,
+                       gewenst=want,
+                       winkel=store,
+                       sort_order=highest_sort_order() + 1)
+        session.add(prod)
+
+        return jsonify(prod.as_json_dict(session))
+
 
 @app.route("/")
 def hello_world():
