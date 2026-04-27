@@ -5,7 +5,7 @@ import typing
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from flask import Flask, redirect, render_template, request, abort, jsonify
 from sqlalchemy import Column, Enum, Integer, String, create_engine, ForeignKey
@@ -157,6 +157,11 @@ def query_for_barcode(barcode: str, session: Session) -> Optional[Product]:
         return None
 
     return session.query(Product).filter_by(id=in_additional_table.product_id).first()
+
+
+def query_for_all_products(session: Session) -> List[Dict[str, Any]]:
+    products = session.query(Product).all()
+    return [p.as_json_dict(session) for p in products]
 
 
 def highest_sort_order_for_store(store: Stores, session: Session) -> int:
@@ -589,6 +594,13 @@ def v2_new_product():
         session.add(prod)
 
         return jsonify(prod.as_json_dict(session))
+
+
+@app.route("/v2/product/list", methods=["get"])
+def v2_product_list():
+    with Session.begin() as session:
+        products = query_for_all_products(session)
+        return jsonify(products)
 
 
 @app.route("/")
