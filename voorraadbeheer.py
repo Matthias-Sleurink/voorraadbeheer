@@ -291,22 +291,26 @@ def remove_product(barcode: str):
         return f"Product met barcode {barcode} heeft nu {entry.count} stuks in de kast."
 
 
+def get_wanted_products_for_store(session: Session, winkel: Optional[Stores]) -> list[Product]:
+    return (session.query(Product)
+            .filter(Product.count < Product.gewenst)
+            .filter_by(winkel=winkel)
+            .order_by(Product.sort_order)
+            .all())
+
+
 @app.route("/boodschappenlijst")
 def boodschappenlijst():
     with Session.begin() as session:
 
         incorrect_counts_lidl, incorrect_counts_plus, incorrect_counts_no_store = [
             (
-                session.query(Product)
-                .filter(Product.count < Product.gewenst)
-                .filter_by(winkel=winkel)
-                .order_by(Product.sort_order)
-                .all()
+                get_wanted_products_for_store(session, winkel)
             )
             for winkel in [Stores.LIDL, Stores.PLUS, None]
         ]
         email_text = ""
-        email_addresses: [Email] = session.query(Email).all()
+        email_addresses: list[Email] = session.query(Email).all()
 
         if len(email_addresses) > 0:
             email_text = f"mailto:{urllib.parse.quote(email_addresses[0].address)}?subject={urllib.parse.quote('Boodschappenlijst van ' + datetime.now().strftime('%Y-%m-%d'))}&body="
@@ -601,6 +605,23 @@ def v2_product_list():
     with Session.begin() as session:
         products = query_for_all_products(session)
         return jsonify(products)
+
+
+@app.route("/v2/boodschappenlijst", methods=["get"])
+def v2_boodschappenlijst():
+    with Session.begin() as session:
+        incorrect_counts_lidl, incorrect_counts_plus, incorrect_counts_no_store = [
+            (
+                get_wanted_products_for_store(session, winkel)
+            )
+            for winkel in [Stores.LIDL, Stores.PLUS, None]
+        ]
+
+        return jsonify({
+            Stores.LIDL.as_json_str(): [p.as_json_dict(session) for p in incorrect_counts_lidl],
+            Stores.PLUS.as_json_str(): [p.as_json_dict(session) for p in incorrect_counts_plus],
+            Stores.as_json_str(None): [p.as_json_dict(session) for p in incorrect_counts_no_store]
+        })
 
 
 @app.route("/")
