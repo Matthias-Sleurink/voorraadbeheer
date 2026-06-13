@@ -117,3 +117,4 @@ dmypy.json
 .idea/
 
 voorraad.db
+voorraad_newstyle.db

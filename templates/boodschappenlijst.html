@@ -81,25 +81,18 @@
 </head>
     <body>
     <h1>Boodschappenlijst</h1>
-    <h2>Lidl</h2>
+
+    {% for (store_name, incorrect_counts) in store_name_to_missing_products.items() %}
+    <h2>{{store_name}}</h2>
     <ul>
-        {% for product in incorrect_counts_lidl %}
-            <li>{{ product.gewenst - product.count }} stuks {{ product.naam if product.naam != None else product.barcode }}. </li>            
-        {%endfor%}
+        {% for product in incorrect_counts %}
+        <li>
+            {{ product.amount_wanted - product.amount_in_storage }} stuks {{ product.name if product.name != "" else product.barcode }}.
+        </li>
+        {% endfor %}
     </ul>
-    <h2>Plus</h2>
-    <ul>
-        {% for product in incorrect_counts_plus %}
-            <li>{{ product.gewenst - product.count }} stuks {{ product.naam if product.naam != None else product.barcode }}. </li>            
-        {%endfor%}
-    </ul>
-    <h2>Onbekende winkel</h2>
-    <ul>
-        {% for product in incorrect_counts_no_store %}
-            <li>{{ product.gewenst - product.count }} stuks {{ product.naam if product.naam != None else product.barcode }}. </li>            
-        {%endfor%}
-    </ul>
-    
+    {% endfor %}
+
     {% if email_text != "" %}
         <h2>Email boodschappenlijst</h2>
         <p>

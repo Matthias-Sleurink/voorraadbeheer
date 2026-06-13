@@ -25,10 +25,10 @@
         let scanner_current_function = "{{ scanner_function }}" ;
 
         function switch_scanner_function() {
-            if (scanner_current_function === "toevoegen") {
-                scanner_current_function = "weghalen";
+            if (scanner_current_function === "increase") {
+                scanner_current_function = "remove";
             } else {
-                scanner_current_function = "toevoegen";
+                scanner_current_function = "increase";
             }
             const textDiv = document.getElementById("scannerfunctiontext");
             textDiv.innerText = "Huidige functie: " + scanner_current_function;
@@ -41,23 +41,24 @@
         function for_barcode(barcode) {
             return document.getElementById("product_" + barcode)
         }
-    function move_up(barcode) {
-        const product = for_barcode(barcode);
-        product.previousElementSibling?.before(product);
-        const req = new XMLHttpRequest()
-        req.open("POST", "/move_up/" + barcode, true) // true meaning async
-        req.send()
-    }
-    
-    function move_down(barcode) {
-        const product = for_barcode(barcode);
-        product.nextElementSibling?.after(product);
-        const req = new XMLHttpRequest()
-        req.open("POST", "/move_down/" + barcode, true) // true meaning async
-        req.send()
-    }
 
-    function update_product(barcode) {
+        function move_up(barcode) {
+            const product = for_barcode(barcode);
+            product.previousElementSibling?.before(product);
+            const req = new XMLHttpRequest()
+            req.open("POST", "/move_up/" + barcode, true) // true meaning async
+            req.send()
+        }
+
+        function move_down(barcode) {
+            const product = for_barcode(barcode);
+            product.nextElementSibling?.after(product);
+            const req = new XMLHttpRequest()
+            req.open("POST", "/move_down/" + barcode, true) // true meaning async
+            req.send()
+        }
+
+        function update_product(barcode) {
             let product = {barcode: barcode};
             const tableRow = for_barcode(barcode);
             let hadIssue = false;
@@ -107,12 +108,8 @@
             req.onreadystatechange = function () {
                 if (req.readyState === 4 && req.status === 200) {
                     tableRow.classList.remove("error-row")
-                    const new_store_table = 
-                    document
-                        .getElementById(
-                            product.winkel === "Stores.LIDL" ?
-                                "table_Lidl" :
-                                "table_Plus");
+                    const new_store_table = document.getElementById("table_" + product.winkel);
+                    console.log(new_store_table);
                     if (new_store_table.id !== tableRow.parentElement?.parentElement.id) {
                         new_store_table.getElementsByTagName("tbody")[0].append(tableRow);
                     }
@@ -224,33 +221,23 @@
                         <td>{{ product.barcode }}{% if product.andere_barcodes %}, {% endif %} {{ product.andere_barcodes }}</td>
 {#                    <th>Naam</th>#}
                         <td>
-                            <input class="product_naam" type="text" value="{{ str_of_or(product.naam, "") }}" placeholder="Naam">
+                            <input class="product_naam" type="text" value="{{ str_of_or(product.name, "") }}" placeholder="Naam">
                         </td>
 {#                    <th>Winkel</th>#}
                         <td>
                             <select class="product_winkel">
-                                {% if product.winkel == Stores.PLUS %}
-                                    <option value="Stores.PLUS">Plus</option>
-                                    <option value="Stores.LIDL">Lidl</option>
-                                    <option value="None">Geen winkel</option>
-                                {% elif product.winkel == Stores.LIDL %} 
-                                    <option value="Stores.LIDL">Lidl</option>
-                                    <option value="Stores.PLUS">Plus</option>
-                                    <option value="None">Geen winkel</option>
-                                {% else %} 
-                                    <option value="None">Geen winkel</option>
-                                    <option value="Stores.PLUS">Plus</option>
-                                    <option value="Stores.LIDL">Lidl</option>
-                                {% endif %}
+                                {% for store in store_list %}
+                                    <option value="{{ store.name}}" {% if store.id == product.store_id %} selected="selected" {% endif %}> {{ store.name }} </option>
+                                {% endfor %}
                             </select>
                         </td>
 {#                    <th>Aantal</th>#}
                         <td>
-                            <input class="product_count" type="number" value="{{ product.count }}" min="0">
+                            <input class="product_count" type="number" value="{{ product.amount_in_storage }}" min="0">
                         </td>
 {#                    <th>Gewenst aantal</th>#}
                         <td>
-                            <input class="product_gewenst" type="number" value="{{ product.gewenst }}" min="0">
+                            <input class="product_gewenst" type="number" value="{{ product.amount_wanted }}" min="0">
                         </td>
 {#                    <th>Opslaan</th>#}
                         <td><button onclick="update_product('{{ product.barcode }}')">Opslaan</button></td>

@@ -1,4 +1,5 @@
 import enum
+import json
 import os
 import subprocess
 import typing
@@ -10,7 +11,11 @@ from typing import Optional, List, Dict, Any
 from flask import Flask, redirect, render_template, request, abort, jsonify
 from sqlalchemy import Column, Enum, Integer, String, create_engine, ForeignKey
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
+
+import new_style_db
+import new_style_db as newstyle
+from new_style_db import Barcode
 
 Base = declarative_base()
 
@@ -111,6 +116,9 @@ class AdditionalProductBarcode(Base):
             "product_id": self.product_id,
             "id": self.id,
         }
+
+    def __repr__(self):
+        return f"<AdditionalBarcode: {self.barcode=}, {self.product_id=}, {self.id=}>"
 
 
 class TempProduct(Base):
@@ -629,30 +637,161 @@ def hello_world():
     return redirect("/boodschappenlijst")
 
 
-with Session.begin() as session:
+def oldstyle_to_newstyle():
+    newstyle_engine = newstyle.create_database()
+    new_sessionmaker = sessionmaker(bind=newstyle_engine)
+    old_sessionmaker = Session
 
-    if engine == ":memory:":
-        create_database()
-    else:
-        # New Dev machine does not trigger ":memory:" check, even though the database does not exist.
-        try:
-            session.query(Product).first()
-        except OperationalError as o:
+    oldstyle_settings_to_newstyle(old_sessionmaker, new_sessionmaker)
+    oldstyle_emails_to_newstyle(old_sessionmaker, new_sessionmaker)
+    oldstyle_products_to_newstyle(old_sessionmaker, new_sessionmaker)
+
+
+def oldstyle_products_to_newstyle(old_sessionmaker, new_sessionmaker):
+    # There was no stores table, so we insert the basic stores.
+
+    lidl_id, plus_id, unknown_id = 0, 0, 0
+    with new_sessionmaker.begin() as session:
+        unknown = newstyle.Store(id=newstyle.UNKNOWN_STORE_ID)
+        unknown.name = "Onbekend"
+        session.add(unknown)
+
+        lidl = newstyle.Store()
+        lidl.name = "Lidl"
+        session.add(lidl)
+
+        plus = newstyle.Store()
+        plus.name = "Plus"
+        session.add(plus)
+
+        # flushes the objects, and creates the auto-incremented IDs
+        session.flush()
+        unknown_id = unknown.id
+        plus_id = plus.id
+        lidl_id = lidl.id
+
+    with old_sessionmaker.begin() as old_session:
+        with new_sessionmaker.begin() as new_session:
+            for old_product in old_session.query(Product):
+                new_product = newstyle.Product()
+                new_product.name = old_product.naam or ""  # name used to be nullable
+                new_product.amount_in_storage = old_product.count
+                new_product.amount_wanted = old_product.gewenst
+                new_product.sort_order = old_product.sort_order
+
+                if old_product.winkel == Stores.LIDL:
+                    new_product.store_id = lidl_id
+                elif old_product.winkel == Stores.PLUS:
+                    new_product.store_id = plus_id
+                else:
+                    new_product.store_id = unknown_id
+
+                # The add adds the object as a managed object, the flush creates the auto-incremented ID.
+                new_session.add(new_product)
+                new_session.flush()
+
+                # Issue case 2: Some products have a main barcode that is also an additional barcode for another product.
+                #               The previous code first searched primary barcodes, and then only when not found, additional ones.
+                #               So, we want this "primary" barcode to replace the previous one that was put in place as
+                #               an additional barcode.
+                m_duplicate_prim_bc = new_session.query(newstyle.Barcode).filter(
+                    Barcode.barcode == old_product.barcode).one_or_none()
+                if m_duplicate_prim_bc is not None:
+                    app.logger.warning(f"Running fixup: Main barcode for {old_product} equals an additional"
+                                       f" barcode {m_duplicate_prim_bc}."
+                                       f" The barcode will be adjusted to point to {new_product}.")
+                    m_duplicate_prim_bc.product_id = new_product.id
+                else:
+                    bc = newstyle.Barcode(barcode=old_product.barcode)
+                    bc.product_id = new_product.id
+                    new_session.add(bc)
+
+                other_barcodes: typing.List[AdditionalProductBarcode] = \
+                    old_session.query(AdditionalProductBarcode).filter_by(product_id=old_product.id).all()
+                for obc in other_barcodes:
+                    # issue case 1: There are some products that have a barcode as primary and as additional barcode.
+                    m_duplicate_bc = new_session.query(newstyle.Barcode).filter(
+                        Barcode.barcode == obc.barcode).one_or_none()
+
+                    if m_duplicate_bc is not None:
+                        if m_duplicate_bc.product_id == new_product.id:
+                            # this is already a good barcode, for the product we want, so there is no problem.
+                            app.logger.warning(f"Running fixup: Not making Barcode for {old_product},"
+                                               f" as the additional barcode {obc} is also the barcode for the product.")
+                            continue
+                        else:
+                            raise ValueError(
+                                f"Duplicate barcode found! {old_product=}, {new_product=}, {obc=}, {m_duplicate_bc=}")
+
+                    nbc = newstyle.Barcode(barcode=obc.barcode)
+                    nbc.product_id = new_product.id
+                    new_session.add(nbc)
+
+
+def oldstyle_emails_to_newstyle(old_sessionmaker, new_sessionmaker):
+    with old_sessionmaker.begin() as old_session:
+        emails: List[Email] = old_session.query(Email).all()
+
+        emails_text = json.dumps([email.address for email in emails])
+
+        with new_sessionmaker.begin() as new_session:
+            s = new_style_db.Setting()
+            s.name = "emails"
+            s.value = emails_text
+            new_session.add(s)
+
+
+def oldstyle_settings_to_newstyle(old_sessionmaker, new_sessionmaker):
+    with old_sessionmaker.begin() as old_session:
+        settings = query_for_settings(old_session)
+
+        kv_pairs = {
+            "version": settings.version,
+            "scanner_function": settings.scanner_functie,
+        }
+
+        with new_sessionmaker.begin() as new_session:
+            for k, v in kv_pairs.items():
+                s = new_style_db.Setting()
+                s.name = k
+                s.value = v
+                new_session.add(s)
+
+
+def old_main():
+    with Session.begin() as session:
+
+        if engine == ":memory:":
             create_database()
-    try:
-        settings = query_for_settings(session)
-    except OperationalError:
-        # the first version did not have a settings table so we need this to check if that is the most recent version.
-        settings = run_update_to_1(session)
+        else:
+            # New Dev machine does not trigger ":memory:" check, even though the database does not exist.
+            try:
+                session.query(Product).first()
+            except OperationalError as o:
+                create_database()
+        try:
+            settings = query_for_settings(session)
+        except OperationalError:
+            # the first version did not have a settings table so we need this to check if that is the most recent version.
+            settings = run_update_to_1(session)
 
-    if settings.version < 2:
-        run_update_to_2(session)
-        settings.version = 2
+        if settings.version < 2:
+            run_update_to_2(session)
+            settings.version = 2
 
-    if settings.version < 3:
-        run_update_to_3(session)
-        settings.version=3
+        if settings.version < 3:
+            run_update_to_3(session)
+            settings.version = 3
+
+    app.run()
+
+
+def main():
+    if not (Path(".") / "voorraad_newstyle.db").exists():
+        oldstyle_to_newstyle()
+
+    newstyle.main()
 
 
 if __name__ == "__main__":
-    app.run()
+    main()
