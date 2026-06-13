@@ -25,10 +25,10 @@
         let scanner_current_function = "{{ scanner_function }}" ;
 
         function switch_scanner_function() {
-            if (scanner_current_function === "toevoegen") {
-                scanner_current_function = "weghalen";
+            if (scanner_current_function === "increase") {
+                scanner_current_function = "decrease";
             } else {
-                scanner_current_function = "toevoegen";
+                scanner_current_function = "increase";
             }
             const textDiv = document.getElementById("scannerfunctiontext");
             textDiv.innerText = "Huidige functie: " + scanner_current_function;
