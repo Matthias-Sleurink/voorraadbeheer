@@ -1,16 +1,12 @@
 import enum
 import json
-import os
-import subprocess
+import sys
 import typing
-import urllib.parse
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-from flask import Flask, redirect, render_template, request, abort, jsonify
+from flask import Flask
 from sqlalchemy import Column, Enum, Integer, String, create_engine, ForeignKey
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 import new_style_db
@@ -207,7 +203,6 @@ def query_for_first_below(product: Product, session) -> Optional[Product]:
         .first()
     )
 
-
 def make_shopping_list(products: list[Product], header: str = "") -> str:
     if len(products) < 1:
         return ""
@@ -217,425 +212,12 @@ def make_shopping_list(products: list[Product], header: str = "") -> str:
         if prod.gewenst - prod.count > 0
     )
 
-
-def create_database():
-    global engine
-    Base.metadata.create_all(engine)
-    engine.dispose()
-    engine = make_engine()
-
-
-def run_update_to_1(session: Session) -> Settings:
-    Base.metadata.create_all(engine, tables=[Settings.__table__])
-    return query_for_settings(session)  # create a default settings object
-
-
-def run_update_to_2(session: Session):
-    Base.metadata.create_all(engine, tables=[Email.__table__])
-
-def run_update_to_3(session: Session):
-    Base.metadata.create_all(engine, tables=[AdditionalProductBarcode.__table__])
-
-@app.context_processor
-def util_methods_definer():
-    util_methods = {}
-
-    def str_of_or(value, alternative: str):
-        if value is not None:
-            return str(value)
-        return alternative
-
-    util_methods["str_of_or"] = str_of_or
-
-    return util_methods
-
-@app.route("/restart", methods=["GET"])
-def restart():
-    app.logger.warning("Restarting voorraadbeheer now!")
-    os.system("shutdown -r now")
-
-    return "Restarting..."
-
-@app.route("/toevoegen/temp", methods=["POST"])
-def add_temp_product():
-    prod = TempProduct()
-    prod.naam = request.json.get("naam")
-    prod.winkel = (
-        Stores.LIDL if request.json.get("winkel") == "Stores.LIDL" else Stores.PLUS
-    )
-    prod.gewenst = int(request.json.get("gewenst"))
-
-    with Session.begin() as session:
-        session.add(prod)
-
-    return f"{prod.naam} toegevoegd aan de tijdelijke boodschappenlijst"
-
-
-@app.route("/toevoegen/<barcode>", methods=["GET"])
-def add_product(barcode: str):
-    with Session.begin() as session:
-        entry = query_for_barcode(barcode, session)
-
-        if entry is None:
-            session.add(Product(barcode=barcode, sort_order=highest_sort_order() + 1))
-            return f"Product voor barcode {barcode} toegevoegd."
-
-        entry.count += 1
-        return f"Product met barcode {barcode} heeft nu {entry.count} stuks in de kast."
-
-
-@app.route("/weghalen/<barcode>", methods=["GET"])
-def remove_product(barcode: str):
-    with Session.begin() as session:
-        entry = query_for_barcode(barcode, session)
-
-        if entry is None:
-            return (
-                f"Product with barcode {barcode} does not exist in the database!",
-                404,
-            )
-
-        entry.count -= 1
-        return f"Product met barcode {barcode} heeft nu {entry.count} stuks in de kast."
-
-
 def get_wanted_products_for_store(session: Session, winkel: Optional[Stores]) -> list[Product]:
     return (session.query(Product)
             .filter(Product.count < Product.gewenst)
             .filter_by(winkel=winkel)
             .order_by(Product.sort_order)
             .all())
-
-
-@app.route("/boodschappenlijst")
-def boodschappenlijst():
-    with Session.begin() as session:
-
-        incorrect_counts_lidl, incorrect_counts_plus, incorrect_counts_no_store = [
-            (
-                get_wanted_products_for_store(session, winkel)
-            )
-            for winkel in [Stores.LIDL, Stores.PLUS, None]
-        ]
-        email_text = ""
-        email_addresses: list[Email] = session.query(Email).all()
-
-        if len(email_addresses) > 0:
-            email_text = f"mailto:{urllib.parse.quote(email_addresses[0].address)}?subject={urllib.parse.quote('Boodschappenlijst van ' + datetime.now().strftime('%Y-%m-%d'))}&body="
-
-            for incorrect_products, name in [
-                (incorrect_counts_lidl, "Lidl"),
-                (incorrect_counts_plus, "Plus"),
-                (incorrect_counts_no_store, "Geen winkel"),
-            ]:
-                email_text += urllib.parse.quote(
-                    make_shopping_list(
-                        incorrect_products,
-                        header=f"{name}: \n",
-                    )
-                )
-
-            if len(email_addresses) > 1:
-                email_text += "&cc="
-                for email in email_addresses[1:]:
-                    email_text += f"{urllib.parse.quote(email.address)},"
-                email_text = email_text[:-1]  # remove last ','
-
-        return render_template(
-            "boodschappenlijst.html",
-            incorrect_counts_lidl=incorrect_counts_lidl,
-            incorrect_counts_plus=incorrect_counts_plus,
-            incorrect_counts_no_store=incorrect_counts_no_store,
-            scanner_function=query_for_settings(session).scanner_functie,
-            email_text=email_text,
-        )
-
-
-@app.route("/alle_producten")
-def alle_producten():
-    with Session.begin() as session:
-        per_store = [
-            (
-                session.query(Product)
-                .filter_by(winkel=store)
-                .order_by(Product.sort_order)
-                .all()
-            )
-            for store in [Stores.LIDL, Stores.PLUS, None]
-        ]
-
-        for products in per_store:
-            for product in products:
-                product.andere_barcodes = ", ".join(map(lambda x: x.barcode, session.query(AdditionalProductBarcode).filter_by(product_id=product.id).all()))
-
-        with_names = zip(["Lidl", "Plus", "Onbekende winkel"], per_store)
-        return render_template(
-            "alle_producten.html",
-            name_productlist=with_names,
-            Stores=Stores,
-            scanner_function=query_for_settings(session).scanner_functie,
-        )
-
-
-@app.route("/instellingen", methods=["GET"])
-def instellingen():
-    with Session.begin() as session:
-        return render_template(
-            "instellingen.html",
-            emails=[e.address for e in session.query(Email).all()],
-            scanner_function=query_for_settings(session).scanner_functie,
-            version=subprocess.check_output(["git", "log", "--oneline", "-n1"]).decode("utf-8"),
-        )
-
-
-@app.route("/update_product", methods=["POST"])
-def update_product():
-    with Session.begin() as session:
-        prod = query_for_barcode(request.json.get("barcode"), session)
-        prod.naam = request.json.get("naam")
-        prod.count = int(request.json.get("count"))
-        prod.gewenst = int(request.json.get("gewenst"))
-        new_winkel = (
-            Stores.LIDL if request.json.get("winkel") == "Stores.LIDL" else Stores.PLUS
-        )
-        winkel_changed = prod.winkel != new_winkel
-        prod.winkel = new_winkel
-        if prod.sort_order is None or winkel_changed:
-            prod.sort_order = highest_sort_order_for_store(prod.winkel, session) + 1
-        return f"Updated product to be: {prod}"
-
-
-@app.route("/move_up/<barcode>", methods=["POST"])
-def move_up(barcode: str):
-    with Session.begin() as session:
-        prod = query_for_barcode(barcode, session)
-        in_new_place = query_for_first_above(prod, session)
-        if in_new_place is not None:
-            prod.sort_order, in_new_place.sort_order = (
-                in_new_place.sort_order,
-                prod.sort_order,
-            )
-    return "ok"
-
-
-@app.route("/move_down/<barcode>", methods=["POST"])
-def move_down(barcode: str):
-    with Session.begin() as session:
-        prod = query_for_barcode(barcode, session)
-        in_new_place = query_for_first_below(prod, session)
-        if in_new_place is not None:
-            prod.sort_order, in_new_place.sort_order = (
-                in_new_place.sort_order,
-                prod.sort_order,
-            )
-    return "ok"
-
-
-@app.route("/scanner_function_switch/<function>", methods=["GET"])
-def scanner_function_switch(function: str):
-    if function is None:
-        return f"Unknown scanner function {function}"
-    if function not in ["toevoegen", "weghalen"] and not function.startswith("barcode_toevoegen"):
-        return f"Unknown scanner function {function}"
-
-    with Session.begin() as session:
-        settings = query_for_settings(session)
-
-        global vorige_scanner_function
-        vorige_scanner_function = settings.scanner_functie
-        settings.scanner_functie = function
-
-    return f"Updated scanner function to be {function}"
-
-
-@app.route("/scan/<barcode>", methods=["GET"])
-def scanner_scanned(barcode: str):
-    with Session.begin() as session:
-        scanner_function = query_for_settings(session).scanner_functie
-
-    if scanner_function == "toevoegen":
-        return add_product(barcode)
-    elif scanner_function == "weghalen":
-        return remove_product(barcode)
-
-    barcode_to_add_to = scanner_function.removeprefix("barcode_toevoegen+")
-    deleted = 0
-    # check if barcode already exists and remove
-    with Session.begin() as session:
-        existing_barcodes = session.query(AdditionalProductBarcode).filter_by(barcode=barcode).all()
-        for existing in existing_barcodes:
-            session.delete(existing)
-            deleted += 1
-
-        # do this in the same session so that rollback will not bring us to an invalid state.
-        to_add_to = query_for_barcode(barcode_to_add_to, session)
-        session.add(AdditionalProductBarcode(barcode=barcode, product_id=to_add_to.id))
-
-        # do this in the same session so that rollback will not bring us to an invalid state.
-        global vorige_scanner_function
-        settings = query_for_settings(session)
-        settings.scanner_functie = vorige_scanner_function
-
-    return f"Added barcode {barcode} to product with barcode {barcode_to_add_to}." + ("" if deleted == 0 else f" Deleted {barcode} from {deleted} other products.")
-
-
-@app.route("/verwijder/<barcode>", methods=["GET"])
-def delete_product(barcode: str):
-    with Session.begin() as session:
-        product = query_for_barcode(barcode, session)
-
-        additionals = session.query(AdditionalProductBarcode).filter_by(product_id=product.id).all()
-        for additional_barcode in additionals:
-            session.delete(additional_barcode)
-
-
-        if product is not None:
-            session.delete(product)
-    return f"Product met barcode {barcode} is verwijderd."
-
-
-@app.route("/toevoegen_email", methods=["POST"])
-def add_email():
-    address = request.json.get("email")
-    if address is None:
-        return f"email address was None!"
-
-    with Session.begin() as session:
-        optEmail = session.query(Email).filter_by(address=address).first()
-        if optEmail is not None:
-            return f"Error: Email with address {address} already exists!"
-
-        session.add(Email(address=address))
-        return f"Added email with address {address}."
-
-
-@app.route("/verwijder_email", methods=["POST"])
-def remove_email():
-    address = request.json.get("email")
-    if address is None:
-        return f"email address was None!"
-
-    with Session.begin() as session:
-        optEmail = session.query(Email).filter_by(address=address).first()
-        if optEmail is None:
-            return f"Error: No email with address {address} found."
-
-        session.delete(optEmail)
-        return f"Deleted email with address {address}."
-
-@app.route("/barcode_toevoegen/<barcode>", methods=["GET"])
-def add_barcode(barcode: str):
-    global vorige_scanner_function
-
-    with Session.begin() as session:
-        settings: Settings = query_for_settings(session)
-        vorige_scanner_function = settings.scanner_functie
-        settings.scanner_functie = "barcode_toevoegen+" + barcode
-
-    return f"Next scanning action will add a barcode for this product."
-
-
-@app.route("/v2/product/<barcode>", methods=["GET"])
-def v2_get_product(barcode: str):
-    with Session.begin() as session:
-        product: typing.Optional[Product] = query_for_barcode(barcode, session)
-        if product is None:
-            abort(404)
-
-        return jsonify(product.as_json_dict(session))
-
-# this is not ideal REST behaviour.
-@app.route("/v2/product/add/<barcode>", methods=["get"])
-def v2_add(barcode: str):
-    add_product(barcode)
-
-    with Session.begin() as session:
-        product: typing.Optional[Product] = query_for_barcode(barcode, session)
-        if product is None:
-            app.logger.warning(f"Product with barcode {barcode} was not found after product_add call!")
-            abort(404)
-
-        return jsonify(product.as_json_dict(session))
-
-@app.route("/v2/product/remove/<barcode>", methods=["get"])
-def v2_remove(barcode: str):
-    remove_product(barcode)
-
-    with Session.begin() as session:
-        product: typing.Optional[Product] = query_for_barcode(barcode, session)
-        if product is None:
-            app.logger.info(f"Product with barcode {barcode} was not found after product_remove call!")
-            abort(404)
-
-        return jsonify(product.as_json_dict(session))
-
-
-@app.route("/v2/product/new", methods=["post"])
-def v2_new_product():
-    json_text = request.json
-
-    try:
-        barcode = json_text["barcode"]
-        name = json_text["name"]
-        have = json_text["have"]
-        want = json_text["want"]
-        store = json_text["store"]
-
-    except KeyError as e:
-        return f"Faulty request! {e!r}"
-
-    try:
-        have = int(have)
-        want = int(want)
-        if store == "Lidl":
-            store = Stores.LIDL
-        elif store == "Plus":
-            store = Stores.PLUS
-        else:
-            raise ValueError(f"Store {store} not recognized.")
-    except ValueError as e:
-        return f"error: {e}"
-
-    with Session.begin() as session:
-        prod = Product(barcode=barcode,
-                       naam=name,
-                       count=have,
-                       gewenst=want,
-                       winkel=store,
-                       sort_order=highest_sort_order() + 1)
-        session.add(prod)
-
-        return jsonify(prod.as_json_dict(session))
-
-
-@app.route("/v2/product/list", methods=["get"])
-def v2_product_list():
-    with Session.begin() as session:
-        products = query_for_all_products(session)
-        return jsonify(products)
-
-
-@app.route("/v2/boodschappenlijst", methods=["get"])
-def v2_boodschappenlijst():
-    with Session.begin() as session:
-        incorrect_counts_lidl, incorrect_counts_plus, incorrect_counts_no_store = [
-            (
-                get_wanted_products_for_store(session, winkel)
-            )
-            for winkel in [Stores.LIDL, Stores.PLUS, None]
-        ]
-
-        return jsonify({
-            Stores.LIDL.as_json_str(): [p.as_json_dict(session) for p in incorrect_counts_lidl],
-            Stores.PLUS.as_json_str(): [p.as_json_dict(session) for p in incorrect_counts_plus],
-            Stores.as_json_str(None): [p.as_json_dict(session) for p in incorrect_counts_no_store]
-        })
-
-
-@app.route("/")
-def hello_world():
-    return redirect("/boodschappenlijst")
-
 
 def oldstyle_to_newstyle():
     newstyle_engine = newstyle.create_database()
@@ -758,39 +340,18 @@ def oldstyle_settings_to_newstyle(old_sessionmaker, new_sessionmaker):
                 new_session.add(s)
 
 
-def old_main():
-    with Session.begin() as session:
-
-        if engine == ":memory:":
-            create_database()
-        else:
-            # New Dev machine does not trigger ":memory:" check, even though the database does not exist.
-            try:
-                session.query(Product).first()
-            except OperationalError as o:
-                create_database()
-        try:
-            settings = query_for_settings(session)
-        except OperationalError:
-            # the first version did not have a settings table so we need this to check if that is the most recent version.
-            settings = run_update_to_1(session)
-
-        if settings.version < 2:
-            run_update_to_2(session)
-            settings.version = 2
-
-        if settings.version < 3:
-            run_update_to_3(session)
-            settings.version = 3
-
-    app.run()
-
-
 def main():
     if not (Path(".") / "voorraad_newstyle.db").exists():
         oldstyle_to_newstyle()
 
-    newstyle.main()
+    params = sys.argv[1:]
+    if len(params) == 0 or not params[0].startswith("--host="):
+        print("Error: Please provide the host IP with --host=<ip>")
+        sys.exit(1)
+
+    host = params[0].removeprefix("--host=")
+
+    newstyle.main(host)
 
 
 if __name__ == "__main__":

@@ -713,10 +713,10 @@ def util_methods_definer():
     return util_methods
 
 
-def main():
+def main(host: str):
     global session_maker
     engine = make_engine()
     session_maker = sessionmaker()
     session_maker.configure(bind=engine)
 
-    newstyle_app.run()
+    newstyle_app.run(host=host)
