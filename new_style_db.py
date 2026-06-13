@@ -420,12 +420,11 @@ def delete_product(barcode: str):
         if product is None:
             return f"Product with barcode {barcode} did not exist at all."
 
-        additionals = session.query(Barcode).filter(Product.id == product.id).all()
+        additionals = session.query(Barcode).filter(Barcode.product_id == product.id).all()
         for additional_barcode in additionals:
             session.delete(additional_barcode)
 
-        if product is not None:
-            session.delete(product)
+        session.delete(product)
 
     return f"Product met barcode {barcode} is verwijderd."
 
