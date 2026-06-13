@@ -494,26 +494,6 @@ def get_scan_action_setting(session: Session) -> Setting:
 
     return default
 
-
-@newstyle_app.route("/verwijder/<barcode>", methods=["GET"])
-def verwijder(barcode: str):
-    if barcode is None:
-        return f"Did not send barcode to delete."
-
-    with session_maker.begin() as session:
-        product = query_for_barcode(session, barcode)
-        if product is None:
-            return f"Product {barcode} not found."
-
-        product_id = product.id
-        session.delete(product)
-        barcodes = session.query(Barcode).filter(Product.id == product_id).all()
-        for code in barcodes:
-            session.delete(code)
-
-        return f"Product met barcode {barcode} is verwijderd."
-
-
 @newstyle_app.route("/scan/<barcode>", methods=["GET"])
 def scan(barcode: str):
     if barcode is None:
