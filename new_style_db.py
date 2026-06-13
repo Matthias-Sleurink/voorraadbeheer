@@ -225,6 +225,12 @@ def instellingen():
         )
 
 
+@newstyle_app.route("/v2/stores", methods=["GET"])
+def v2_stores():
+    with session_maker.begin() as session:
+        stores: list[Store] = session.query(Store).all()
+        return jsonify([s.name for s in stores])
+
 @newstyle_app.route("/v2/product/new", methods=["post"])
 def v2_product_new():
     json_text: dict[str, Any] = request.json
