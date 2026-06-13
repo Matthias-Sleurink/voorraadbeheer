@@ -694,6 +694,10 @@ def verwijder_email():
     return f"Deleted email with address {address}."
 
 
+@newstyle_app.route("/restart")
+def restart():
+    subprocess.run(["systemctl", "restart", "voorraadbeheer.service"])
+
 @newstyle_app.route("/")
 def hello_world():
     return redirect("/boodschappenlijst")
