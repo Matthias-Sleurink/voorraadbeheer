@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import urllib.parse
 from datetime import datetime
@@ -681,7 +682,22 @@ def verwijder_email():
 
 @newstyle_app.route("/restart")
 def restart():
+    backup()
     subprocess.run(["systemctl", "restart", "voorraadbeheer.service"])
+
+
+@newstyle_app.route("/backup", methods=["GET"])
+def backup():
+    backup_dir_path = Path(".") / "backup"
+    backup_dir_path.mkdir(parents=True, exist_ok=True)
+
+    backup_file_path = backup_dir_path / f"voorraad_newstyle.db.back.{datetime.now().isoformat()}"
+    db_file_path = Path(".") / "voorraad_newstyle.db"
+
+    shutil.copy2(str(db_file_path.resolve()), str(backup_file_path.resolve()))
+
+    return f"New file {backup_file_path} of size: {backup_dir_path.lstat().st_size / 1024}KB."
+
 
 @newstyle_app.route("/")
 def hello_world():
