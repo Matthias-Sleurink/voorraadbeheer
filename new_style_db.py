@@ -349,6 +349,11 @@ def v2_product(barcode: str):
         return jsonify(product.as_json_dict(session))
 
 
+@newstyle_app.route("/v2/is_alive", methods=["GET"])
+def v2_is_alive():
+    return "alive"
+
+
 def store_for_name(name: str, session: Session) -> Optional[Store]:
     return session.query(Store).filter(Store.name == name).one_or_none()
 
